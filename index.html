@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Gencer Teknik - İş & Mesai & Borç & QR PDKS Portalı</title>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#05080e">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- QR Kod Okuma Kütüphanesi (jsQR) -->
+    <script src="https://cdn.jsdelivr.net/npm/jsQR@1.4.0/dist/jsQR.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: { brandOrange: '#F38E23', brandDark: '#121A29' },
+                    keyframes: {
+                        modalEnter: { '0%': { opacity: '0', transform: 'scale(0.97) translateY(6px)' }, '100%': { opacity: '1', transform: 'scale(1) translateY(0)' } },
+                        pulseGlow: { '0%, 100%': { boxShadow: '0 0 10px rgba(243, 142, 35, 0.15)' }, '50%': { boxShadow: '0 0 20px rgba(243, 142, 35, 0.3)' } },
+                        floatAnim: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-5px)' } }
+                    },
+                    animation: {
+                        'modal-enter': 'modalEnter 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'pulse-glow': 'pulseGlow 4s ease-in-out infinite',
+                        'float': 'floatAnim 3s ease-in-out infinite'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        html, body {
+            overscroll-behavior-y: none; touch-action: manipulation; -webkit-text-size-adjust: 100%;
+            position: fixed; width: 100%; height: 100%; overflow: hidden; background-color: #05080e; font-family: 'Inter', sans-serif;
+            user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+        }
+        .industrial-bg {
+            background-color: #0b111e;
+            background-image: linear-gradient(rgba(243, 142, 35, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(243, 142, 35, 0.08) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        .active-card {
+            background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+            border: 1.5px solid rgba(243, 142, 35, 0.6);
+            box-shadow: 0 0 20px rgba(243, 142, 35, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+        }
+        .locked-overlay { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        @media (min-width: 768px) {
+            .desktop-container { max-width: 1000px !important; height: 90vh !important; border-radius: 40px !important; border: 12px solid #0f172a !important; margin: auto; }
+            .desktop-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 20px !important; }
+            .desktop-span-2 { grid-column: span 2 / span 2 !important; }
+            .desktop-span-4 { grid-column: span 4 / span 4 !important; }
+        }
+    </style>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, updateDoc, doc, deleteDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.db = null;
+
+        window.showToast = function(msg, isErr=true) {
+            const toast = document.getElementById('toastMsg');
+            if (toast) {
+                toast.innerText = msg;
+                toast.className = `absolute bottom-24 left-1/2 -translate-x-1/2 transition-transform duration-300 z-[150] px-4 py-2 rounded-xl text-xs font-bold shadow-2xl whitespace-nowrap border ${isErr ? 'bg-rose-600 border-rose-400 text-white' : 'bg-emerald-600 border-emerald-400 text-white'}`;
+                toast.style.transform = 'translate(-50%, 0)';
+                setTimeout(() => toast.style.transform = 'translate(-50%, 150%)', 3500);
+            }
+        };
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAZny955XO8L5dXsbSXeXXSf5XEyh2IIho",
+            authDomain: "hasan-ce5f9.firebaseapp.com",
+            projectId: "hasan-ce5f9",
+            storageBucket: "hasan-ce5f9.firebasestorage.app",
+            messagingSenderId: "884455783055",
+            appId: "1:884455783055:web:00dbf707bc89b440e4cefa",
+            measurementId: "G-45FHXFGJZ9"
+        };
+        const app = initializeApp(firebaseConfig);
+        window.db = getFirestore(app);
+
+        onSnapshot(collection(window.db, 'borc_records'), (s) => { let l=[]; s.forEach(d=>l.push({id:d.id,...d.data()})); window.syncBorcData(l); });
+        onSnapshot(collection(window.db, 'mesai_records'), (s) => { let l=[]; s.forEach(d=>l.push({id:d.id,...d.data()})); window.syncMesaiData(l); });
+        onSnapshot(collection(window.db, 'staff_records'), (s) => { let l=[]; s.forEach(d=>l.push({id:d.id,...d.data()})); window.syncStaffData(l); });
+        onSnapshot(collection(window.db, 'pdks_records'), (s) => { let l=[]; s.forEach(d=>l.push({id:d.id,...d.data()})); window.syncPdksData(l); });
+        onSnapshot(collection(window.db, 'notifications'), (s) => { let l=[]; s.forEach(d=>l.push({id:d.id,...d.data()})); window.syncNotifs(l); });
+
+        window.fbAddBorc = async (rec) => await addDoc(collection(window.db, 'borc_records'), { ...rec, createdAt: serverTimestamp() });
+        window.fbUpdateBorcStatus = async (id, resolved) => await updateDoc(doc(window.db, 'borc_records', id), { resolved });
+        window.fbDeleteBorc = async (id) => await deleteDoc(doc(window.db, 'borc_records', id));
+        window.fbAddMesai = async (rec) => await addDoc(collection(window.db, 'mesai_records'), { ...rec, createdAt: serverTimestamp() });
+        window.fbDeleteMesai = async (id) => await deleteDoc(doc(window.db, 'mesai_records', id));
+        window.fbAddStaff = async (name) => await addDoc(collection(window.db, 'staff_records'), { name, status: 'Aktif', role: 'Normal', pass: '1234', createdAt: serverTimestamp() });
+        window.fbUpdateStaffStatus = async (id, name, st) => { if(id.startsWith('def')){ await addDoc(collection(window.db,'staff_records'),{name,status:st,role:'Normal',createdAt:serverTimestamp()});}else{ await updateDoc(doc(window.db,'staff_records',id),{status:st});} }
+        window.fbUpdateStaffRole = async (id, name, rl) => { if(id.startsWith('def')){ await addDoc(collection(window.db,'staff_records'),{name,status:'Aktif',role:rl,createdAt:serverTimestamp()});}else{ await updateDoc(doc(window.db,'staff_records',id),{role:rl});} window.showToast('Ünvan değişti!', false); }
+        window.fbUpdatePassword = async (id, newPass) => { if(!id.startsWith('def')){ await updateDoc(doc(window.db,'staff_records',id),{pass:newPass}); window.showToast('Şifre güncellendi!', false);} }
+        window.fbDeleteStaff = async (id) => { if(!id.startsWith('def')) await deleteDoc(doc(window.db, 'staff_records', id)); }
+        window.fbAddPdks = async (rec) => await addDoc(collection(window.db, 'pdks_records'), { ...rec, createdAt: serverTimestamp() });
+        window.fbAddNotification = async (rec) => await addDoc(collection(window.db, 'notifications'), { ...rec, createdAt: serverTimestamp() });
+        window.fbDeleteNotif = async (id) => await deleteDoc(doc(window.db, 'notifications', id));
+    </script>
+</head>
+<body class="flex justify-center items-center h-full w-full p-0 sm:p-4 bg-[#05080e]">
+    
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen" class="fixed inset-0 z-[200] bg-[#05080e] flex flex-col justify-center items-center p-6 transition-all duration-700">
+        <div class="wave-container absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(#F38E23_1px,transparent_1px)] [background-size:16px_16px]"></div>
+        <div class="relative z-10 w-full max-w-[320px] bg-[#0f172a] border border-amber-500/30 p-8 rounded-3xl shadow-2xl flex flex-col items-center">
+            
+            <div class="w-16 h-16 rounded-2xl overflow-hidden border border-amber-500/50 mb-4 shadow-[0_0_15px_rgba(243,142,35,0.3)] bg-slate-900 flex items-center justify-center animate-float">
+                <i class="fa-solid fa-user-gear text-2xl text-amber-400"></i>
+            </div>
+
+            <h1 class="text-2xl font-black text-white tracking-widest uppercase mb-1">GİRİŞ <span class="text-[#F38E23]">YAP</span></h1>
+            <p class="text-[10px] text-slate-400 mb-6 uppercase tracking-widest text-center">Gencer Teknik Portal</p>
+            <div class="w-full space-y-4">
+                <select id="loginUserSelect" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-amber-400 font-bold outline-none"></select>
+                <input type="password" id="loginPass" placeholder="Şifrenizi girin" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white font-bold outline-none">
+                <button onclick="handleLogin()" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-600 text-[#121A29] font-black text-sm rounded-xl shadow-lg hover:scale-105 transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-right-to-bracket"></i> SİSTEME GİR
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div class="desktop-container relative w-full h-full max-w-sm sm:h-[844px] industrial-bg sm:rounded-[36px] shadow-2xl overflow-hidden flex flex-col justify-between">
+        
+        <!-- HEADER -->
+        <div class="relative z-10 pt-12 sm:pt-6 pb-2 px-5 flex justify-center items-center shrink-0">
+            <button onclick="openModal('notifModal')" id="btn_notif" class="absolute right-5 top-12 sm:top-6 w-10 h-10 bg-slate-900 border border-slate-700 rounded-full flex items-center justify-center text-slate-400 hover:text-amber-400 transition-colors">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notifBadge" class="hidden absolute top-0 right-0 w-3 h-3 bg-rose-600 rounded-full border-2 border-[#0b111e]"></span>
+            </button>
+
+            <div class="flex items-center gap-3 bg-[#0f172a]/90 backdrop-blur-md px-4 py-2.5 rounded-xl border border-amber-500/30 shadow-xl max-w-[300px]">
+                <div class="w-9 h-9 rounded-lg overflow-hidden border border-amber-500/40 shrink-0 bg-slate-900 flex items-center justify-center animate-float">
+                    <i class="fa-solid fa-user-shield text-amber-400 text-sm"></i>
+                </div>
+                <div class="flex flex-col">
+                    <h1 class="text-base sm:text-lg font-black tracking-widest text-white uppercase leading-tight">GENCER <span class="text-[#F38E23]">TEKNİK</span></h1>
+                    <span id="headerUserRole" class="text-[9px] font-bold text-[#F38E23] tracking-[0.2em] uppercase">SİSTEM</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- HOME GRID -->
+        <div class="relative z-10 flex-1 px-6 py-2 flex flex-col justify-center overflow-y-auto no-scrollbar">
+            <div class="grid grid-cols-2 desktop-grid gap-3 my-auto w-full h-full content-center">
+                
+                <!-- BORÇ TAKİP -->
+                <button id="btn_borc" class="active-card desktop-span-2 relative text-white rounded-2xl h-36 flex flex-col justify-between items-center active:scale-95 transition-all overflow-hidden group">
+                    <div id="content_borc" class="w-full h-full p-3.5 flex flex-col justify-between items-center transition-all">
+                        <span class="w-full text-center border-b border-slate-700/60 pb-1.5 font-extrabold text-amber-400 text-[11px] tracking-wider">BORÇ TAKİP</span>
+                        <div class="w-12 h-12 rounded-xl bg-slate-800/90 border border-amber-500/40 flex items-center justify-center my-auto"><i class="fa-solid fa-file-invoice-dollar text-xl text-[#F38E23]"></i></div>
+                        <div class="text-[9px] text-slate-400 bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">Firma Borçları</div>
+                    </div>
+                    <div id="lock_borc" class="hidden absolute inset-0 z-20 locked-overlay bg-slate-900/60 flex items-center justify-center">
+                        <i class="fa-solid fa-lock text-[#F38E23] text-5xl drop-shadow-[0_0_15px_rgba(243,142,35,0.8)]"></i>
+                    </div>
+                </button>
+
+                <!-- MESAİ TAKİP -->
+                <button id="btn_mesai" class="active-card desktop-span-2 relative text-white rounded-2xl h-36 flex flex-col justify-between items-center active:scale-95 transition-all overflow-hidden group">
+                    <div id="content_mesai" class="w-full h-full p-3.5 flex flex-col justify-between items-center transition-all">
+                        <span class="w-full text-center border-b border-slate-700/60 pb-1.5 font-extrabold text-amber-400 text-[11px] tracking-wider">MESAİ TAKİP</span>
+                        <div class="w-12 h-12 rounded-xl bg-slate-800/90 border border-amber-500/40 flex items-center justify-center my-auto"><i class="fa-regular fa-clock text-xl text-[#F38E23]"></i></div>
+                        <div class="text-[9px] text-slate-400 bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">12 Ay & Takvim & Rapor</div>
+                    </div>
+                    <div id="lock_mesai" class="hidden absolute inset-0 z-20 locked-overlay bg-slate-900/60 flex items-center justify-center">
+                        <i class="fa-solid fa-lock text-[#F38E23] text-5xl drop-shadow-[0_0_15px_rgba(243,142,35,0.8)]"></i>
+                    </div>
+                </button>
+
+                <!-- MESAİ GİRİŞ / ÇIKIŞ YAP (ÖZEL QR KOD KONTROLLÜ) -->
+                <button onclick="openModal('pdksModal')" id="btn_pdks" class="col-span-2 desktop-span-4 active-card text-white rounded-2xl p-4 h-32 flex flex-col justify-between items-center active:scale-95 transition-all group bg-gradient-to-r from-[#1e293b] via-[#151e2e] to-[#1e293b]">
+                    <div class="w-full text-center border-b border-slate-700/60 pb-1.5 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-qrcode text-amber-400 text-sm"></i>
+                        <span class="font-extrabold text-amber-400 text-xs tracking-wider uppercase">MESAİ GİRİŞ / ÇIKIŞ YAP (ÖZEL QR ŞART)</span>
+                    </div>
+                    <div class="flex items-center justify-center my-auto w-full"><div class="flex items-center gap-2 bg-slate-900/80 px-4 py-2 rounded-xl border border-amber-500/30"><i class="fa-solid fa-camera text-amber-400"></i><span class="text-xs font-bold text-slate-200">İşyeri QR Kodunu Okut</span></div></div>
+                </button>
+
+                <!-- ŞİFRE İŞLEMLERİ -->
+                <button id="btn_sifre" class="col-span-2 desktop-span-4 active-card relative text-white rounded-2xl h-32 flex flex-col justify-between items-center active:scale-95 transition-all overflow-hidden group border border-slate-600">
+                    <div id="content_sifre" class="w-full h-full p-4 flex flex-col justify-between items-center transition-all">
+                        <div class="w-full text-center border-b border-slate-700/60 pb-1.5 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-key text-slate-300 text-sm"></i>
+                            <span class="font-extrabold text-slate-300 text-xs tracking-wider uppercase">PERSONEL ŞİFRE İŞLEMLERİ</span>
+                        </div>
+                        <div class="flex items-center justify-center my-auto w-full"><div class="flex items-center gap-2 bg-slate-900/80 px-4 py-2 rounded-xl border border-slate-600"><i class="fa-solid fa-pen-to-square text-slate-400"></i><span class="text-xs font-bold text-slate-300">Şifre Değiştir</span></div></div>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- FOOTER NAV -->
+        <div class="relative z-10 pb-8 sm:pb-0 h-24 sm:h-20 bg-[#0a0f19] border-t border-slate-800/80 px-12 flex items-center justify-between shrink-0">
+            <button onclick="switchTab('home')" class="flex flex-col items-center text-[#F38E23] p-2"><i class="fa-solid fa-house text-2xl"></i><span class="text-[9px] font-bold mt-1 uppercase">Ana Sayfa</span></button>
+            <button onclick="switchTab('profile')" class="flex flex-col items-center text-slate-400 hover:text-[#F38E23] p-2"><i class="fa-solid fa-user-gear text-2xl"></i><span class="text-[9px] font-bold mt-1 uppercase">Personel Yönetimi</span></button>
+        </div>
+
+        <!-- MODALLAR -->
+        
+        <!-- PDKS / QR MODAL (SADECE ÖZEL İŞYERİ QR KODUNU KABUL EDER) -->
+        <div id="pdksModal" class="hidden absolute inset-0 bg-[#0b111e] z-50 flex flex-col pt-12 sm:pt-4 p-4 overflow-y-auto no-scrollbar md:p-8 md:pt-16">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+                <h2 class="text-base font-bold text-white"><i class="fa-solid fa-qrcode text-[#F38E23] mr-2"></i>Gencer Teknik QR Doğrulama</h2>
+                <button onclick="closePdksModal()" class="text-slate-400 p-2"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="mt-4 space-y-4 flex-1 pb-24 md:max-w-xl md:mx-auto md:w-full">
+                
+                <!-- KAMERA GÖRÜNTÜ ALANI (SADECE DOĞRU QR İLE AÇILIR) -->
+                <div id="qrScanSection" class="bg-slate-900 p-4 rounded-2xl border border-amber-500/50 text-center relative overflow-hidden shadow-xl">
+                    <p class="text-xs font-bold text-amber-400 mb-3"><i class="fa-solid fa-triangle-exclamation mr-1"></i> İşyerine ait resmi QR kodu kameraya okutun!</p>
+                    <div class="relative w-full h-56 bg-slate-950 rounded-xl overflow-hidden border border-amber-500/30 flex items-center justify-center">
+                        <video id="qrCameraVideo" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                        <canvas id="qrCanvas" class="hidden"></canvas>
+                        <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-slate-400">
+                            <i class="fa-solid fa-qrcode text-5xl mb-2 text-amber-500 animate-pulse"></i>
+                            <span class="text-xs font-bold text-amber-300">Kamera Kapalı</span>
+                        </div>
+                        <div class="absolute inset-0 border-2 border-dashed border-amber-500/60 pointer-events-none m-8 rounded-xl flex items-center justify-center">
+                            <span class="bg-slate-950/80 px-3 py-1.5 text-[10px] text-amber-400 font-bold rounded shadow">Resmi QR Kodu Buraya Tutun</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="startCamera()" class="flex-1 py-3 bg-amber-500 text-slate-950 font-black text-xs rounded-xl shadow hover:bg-amber-400"><i class="fa-solid fa-video mr-1"></i> Kamerayı Başlat</button>
+                        <button onclick="stopCamera()" class="py-3 px-4 bg-slate-800 text-slate-300 font-bold text-xs rounded-xl"><i class="fa-solid fa-stop"></i> Kapat</button>
+                    </div>
+                </div>
+
+                <!-- DOĞRU QR OKUTULDUKTAN SONRA AÇILAN PANEL (GİRİŞ / ÇIKIŞ SEÇENEĞİ) -->
+                <div id="actionPanelSection" class="hidden bg-slate-900 p-5 rounded-2xl border border-emerald-500/60 space-y-4 shadow-[0_0_20px_rgba(16,185,129,0.15)]">
+                    <div class="flex items-center justify-between bg-emerald-950/40 border border-emerald-500/30 p-3 rounded-xl">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+                            <span class="text-xs font-bold text-emerald-300">İşyeri QR Kodu Doğrulandı!</span>
+                        </div>
+                        <span id="pdksActiveUserLabel" class="text-xs font-black text-white"></span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 pt-2">
+                        <button onclick="recordPdks('Giriş')" class="py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl shadow-lg active:scale-95 transition-all flex flex-col items-center justify-center gap-1">
+                            <i class="fa-solid fa-right-to-bracket text-lg"></i>
+                            <span>GİRİŞ YAP</span>
+                        </button>
+                        <button onclick="recordPdks('Çıkış')" class="py-4 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow-lg active:scale-95 transition-all flex flex-col items-center justify-center gap-1">
+                            <i class="fa-solid fa-right-from-bracket text-lg"></i>
+                            <span>ÇIKIŞ YAP</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-xs font-bold text-slate-300 mb-2">Bugünkü Loglar</h3>
+                    <div id="pdksLogContainer" class="space-y-2 max-h-40 overflow-y-auto no-scrollbar"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MESAİ MODAL (AYLAR, GÜNLER VE RAPORLAR) -->
+        <div id="mesaiModal" class="hidden absolute inset-0 bg-[#0b111e] z-50 flex flex-col pt-12 sm:pt-4 p-4 overflow-y-auto no-scrollbar">
+             <div class="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+                <h2 class="text-base font-bold text-white"><i class="fa-solid fa-calendar-days text-[#F38E23] mr-2"></i>Mesai Takip & Raporlar</h2>
+                <div class="flex items-center gap-2">
+                    <button onclick="openModal('addMesaiModal')" class="w-8 h-8 rounded-lg bg-[#F38E23] text-[#121A29] font-black flex items-center justify-center shadow"><i class="fa-solid fa-plus text-sm"></i></button>
+                    <button onclick="closeModal('mesaiModal')" class="text-slate-400 p-2"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+            </div>
+            
+            <div id="viewMonths" class="mt-4">
+                <div class="grid grid-cols-3 gap-2.5" id="monthsGrid"></div>
+            </div>
+            
+            <div id="viewDays" class="hidden mt-3 space-y-4 flex-1 pb-24">
+                <div class="flex justify-between items-center">
+                    <button onclick="showMonthsView()" class="text-xs text-[#F38E23] font-bold"><i class="fa-solid fa-arrow-left"></i> Aylara Dön</button>
+                    <span id="selectedMonthLabel" class="text-xs font-bold text-slate-300"></span>
+                </div>
+                <div class="bg-slate-900/90 p-2 rounded-xl"><div id="daysGrid" class="grid grid-cols-7 gap-1 text-center"></div></div>
+                <div>
+                    <p class="text-[10px] text-slate-400 mb-1 text-center">* Mesaiyi silmek için üzerine 1 sn basılı tutun.</p>
+                    <div id="mesaiListContainer" class="space-y-1.5 max-h-56 overflow-y-auto no-scrollbar"></div>
+                </div>
+            </div>
+
+            <!-- AYLIK RAPORLAR GÖRÜNÜMÜ -->
+            <div id="viewReport" class="hidden mt-3 space-y-4 flex-1 pb-24">
+                <div class="flex justify-between items-center">
+                    <button onclick="showMonthsView()" class="text-xs text-[#F38E23] font-bold"><i class="fa-solid fa-arrow-left"></i> Aylara Dön</button>
+                    <span id="selectedReportMonthLabel" class="text-xs font-bold text-amber-400 uppercase">Aylık Özet Rapor</span>
+                </div>
+                <div class="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3">
+                    <h3 class="text-xs font-bold text-slate-300 border-b border-slate-800 pb-2">Personel Bazlı Toplam Mesai Saatleri</h3>
+                    <div id="monthlyReportList" class="space-y-2 max-h-72 overflow-y-auto no-scrollbar"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MANUEL MESAİ EKLEME PANELİ -->
+        <div id="addMesaiModal" class="hidden absolute inset-0 bg-[#0b111e] z-[60] flex flex-col pt-12 sm:pt-4 p-4 overflow-y-auto no-scrollbar">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 class="text-sm font-bold text-amber-400"><i class="fa-solid fa-plus-circle mr-1"></i> Manuel Mesai Ekle</h3>
+                <button onclick="closeModal('addMesaiModal')" class="text-slate-400 p-1"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="mt-4 space-y-4 flex-1 pb-24 md:max-w-md md:mx-auto w-full">
+                <div>
+                    <label class="text-xs text-slate-400">Tarih Seçin</label>
+                    <input type="date" id="manualMesaiDate" class="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-white outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Açıklama / Görev</label>
+                    <input type="text" id="manualMesaiNote" placeholder="Örn: Saha Montaj" class="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-white outline-none">
+                </div>
+                <div class="bg-slate-900 p-3 rounded-xl border border-amber-500/30">
+                    <label class="text-xs text-amber-400 font-bold block mb-2">Personel ve Saatler</label>
+                    <div id="manualStaffChecklist" class="space-y-2 max-h-48 overflow-y-auto no-scrollbar"></div>
+                </div>
+                <button onclick="saveManualMesai()" class="w-full py-3 bg-[#F38E23] text-[#121A29] font-black text-xs rounded-xl shadow-lg">Mesaiyi Kaydet</button>
+            </div>
+        </div>
+
+        <!-- BORÇ MODAL -->
+        <div id="borcModal" class="hidden absolute inset-0 bg-[#0b111e] z-50 flex flex-col pt-12 sm:pt-4 p-4 overflow-y-auto no-scrollbar">
+            <div class="flex justify-between pb-3 border-b border-slate-800 items-center">
+                <h2 class="font-bold text-white"><i class="fa-solid fa-file-invoice-dollar text-[#F38E23] mr-2"></i>Borç & Malzeme Takip</h2>
+                <div class="flex gap-2">
+                    <button onclick="openModal('addBorcModal')" class="w-8 h-8 rounded-lg bg-[#F38E23] text-[#121A29] font-black flex items-center justify-center shadow"><i class="fa-solid fa-plus text-sm"></i></button>
+                    <button onclick="closeModal('borcModal')" class="text-slate-400 p-2"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+            </div>
+            <div class="mt-4 space-y-4 flex-1 pb-24 overflow-y-auto no-scrollbar">
+                <div>
+                    <h3 class="text-xs font-bold text-amber-400 mb-2 uppercase tracking-wider">● Aktif Borçlar</h3>
+                    <div id="activeBorcList" class="space-y-2"></div>
+                </div>
+                <div class="mt-4">
+                    <h3 class="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">✔ Çözülenler</h3>
+                    <div id="resolvedBorcList" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- YENİ BORÇ EKLEME MODALI -->
+        <div id="addBorcModal" class="hidden absolute inset-0 bg-[#0b111e] z-[60] flex flex-col pt-12 sm:pt-4 p-4 overflow-y-auto no-scrollbar">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 class="text-sm font-bold text-amber-400"><i class="fa-solid fa-plus-circle mr-1"></i> Yeni Borç Ekle</h3>
+                <button onclick="closeModal('addBorcModal')" class="text-slate-400 p-1"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="mt-4 space-y-3 flex-1 pb-24 md:max-w-md md:mx-auto w-full">
+                <div>
+                    <label class="text-xs text-slate-400">Kayıt Tarihi</label>
+                    <input type="date" id="borcDateInput" class="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-white outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Firma Adı</label>
+                    <input type="text" id="borcFirma" placeholder="Örn: Yıldız Yapı Ltd." class="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-white outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Malzeme Adı</label>
+                    <input type="text" id="borcMalzeme" placeholder="Örn: Demir Profil" class="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-white outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Adet</label>
+                    <input type="number" id="borcAdet" placeholder="Örn: 50" class="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-white outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Açıklama</label>
+                    <textarea id="borcAck" rows="2" placeholder="Örn: Acil sevkiyat" class="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-white outline-none"></textarea>
+                </div>
+                <button onclick="saveNewBorc()" class="w-full py-3 bg-[#F38E23] text-[#121A29] font-black text-xs rounded-xl shadow-lg mt-2">Borcu Kaydet</button>
+            </div>
+        </div>
+
+        <!-- ŞİFRE İŞLEMLERİ MODALI -->
+        <div id="passwordModal" class="hidden absolute inset-0 bg-[#0b111e] z-50 flex flex-col pt-12 sm:pt-4 p-4 md:p-8">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+                <h2 class="text-base font-bold text-white"><i class="fa-solid fa-key text-[#F38E23] mr-2"></i>Şifre İşlemleri</h2>
+                <button onclick="closeModal('passwordModal')" class="text-slate-400 p-2"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="mt-6 bg-slate-900 p-5 rounded-2xl border border-slate-700 md:max-w-md md:mx-auto w-full">
+                <label class="text-[11px] font-bold text-slate-400">Personel Seçin</label>
+                <select id="passUserSelect" class="w-full mt-2 bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-amber-400 font-bold outline-none"></select>
+                
+                <label class="text-[11px] font-bold text-slate-400 mt-4 block">Yeni Şifre</label>
+                <input type="password" id="newPassInput" placeholder="Yeni şifre girin" class="w-full mt-2 bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white outline-none">
+                
+                <button onclick="updatePassword()" class="w-full mt-5 py-3.5 bg-gradient-to-r from-amber-500 to-orange-600 text-[#121A29] font-black text-sm rounded-xl">Şifreyi Güncelle</button>
+            </div>
+        </div>
+
+        <!-- BİLDİRİMLER MODALI -->
+        <div id="notifModal" class="hidden absolute inset-0 bg-[#0b111e] z-50 flex flex-col pt-12 sm:pt-4 p-4 md:p-8">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+                <h2 class="text-base font-bold text-white"><i class="fa-solid fa-bell text-[#F38E23] mr-2"></i>Bildirim Paneli</h2>
+                <button onclick="closeModal('notifModal')" class="text-slate-400 p-2"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div id="notifListContainer" class="mt-4 space-y-2 flex-1 overflow-y-auto no-scrollbar md:max-w-lg md:mx-auto w-full pb-24"></div>
+        </div>
+
+        <!-- PERSONEL YÖNETİMİ TAB -->
+        <div id="profileTab" class="hidden absolute inset-0 bg-[#121A29] z-40 p-6 pt-12 sm:pt-6 flex flex-col justify-between overflow-y-auto no-scrollbar">
+            <div>
+                <div class="flex justify-between pb-4 border-b border-slate-800"><h2 class="text-xl font-bold text-white">Personel Yönetimi</h2><button onclick="switchTab('home')" class="text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button></div>
+                <div class="mt-4 space-y-3">
+                    <div class="flex gap-2"><input type="text" id="newStaffName" placeholder="Ad Soyad" class="flex-1 bg-slate-900 border-slate-800 rounded-lg p-2.5 text-xs text-white outline-none"><button onclick="addNewCustomStaff()" class="bg-[#F38E23] text-[#121A29] font-bold px-4 rounded-lg text-xs">Ekle</button></div>
+                    <div id="profileStaffList" class="space-y-2 max-h-[60vh] overflow-y-auto no-scrollbar pb-12 mt-4"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="toastMsg" style="transform: translate(-50%, 150%);" class="absolute bottom-24 left-1/2 transition-transform duration-300 z-[150] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap bg-rose-600 text-white"></div>
+    </div>
+
+    <!-- SCRIPT -->
+    <script>
+        let currentUser = null; let currentUserRole = null; let currentUserId = null;
+        let liveData = { borc:[], mesai:[], staff:[], pdks:[], notifs:[] };
+        
+        // ADMIN KULLANICI BÜYÜK HARFLERLE SABİTLENDİ
+        let defaultStaff = [ { id: 'admin1', name: "HASAN GÜRBÜZ", status: 'Aktif', role: 'Admin', pass: 'hasan998' } ];
+
+        function getCombStaff() {
+            let comb = [...defaultStaff];
+            liveData.staff.forEach(ls => { let i = comb.findIndex(c => c.name === ls.name); if(i !== -1) comb[i] = {...comb[i], ...ls}; else comb.push(ls); });
+            return comb.filter(s => s.status !== 'Deleted');
+        }
+
+        window.syncStaffData = (l) => { liveData.staff = l; if(!currentUser) renderLoginSelect(); renderProfileStaffList(); renderPdksSelect(); renderPassSelect(); renderManualChecklist(); };
+        window.syncPdksData = (l) => { liveData.pdks = l; renderPdksLogs(); };
+        window.syncNotifs = (l) => { liveData.notifs = l; renderNotifs(); };
+        window.syncBorcData = (l) => { liveData.borc = l; renderBorcLists(); };
+        window.syncMesaiData = (l) => { liveData.mesai = l; renderMesaiList(liveData.mesai.filter(m=>m.month===selectedMonthIndex && m.day===selectedDay)); };
+
+        setInterval(() => { const n=new Date(); const el=document.getElementById('liveClock'); if(el) el.innerText = n.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'}); }, 1000);
+
+        let activeVideoStream = null;
+        let qrScanInterval = null;
+
+        window.startCamera = async () => {
+            const videoEl = document.getElementById('qrCameraVideo');
+            const placeholder = document.getElementById('cameraPlaceholder');
+            const canvasEl = document.getElementById('qrCanvas');
+            const canvasCtx = canvasEl.getContext('2d');
+
+            try {
+                activeVideoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                videoEl.srcObject = activeVideoStream;
+                placeholder.style.display = 'none';
+                window.showToast('Kamera açıldı, işyeri QR kodu aranıyor...', false);
+
+                // Sürekli QR tarama döngüsü
+                qrScanInterval = setInterval(() => {
+                    if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
+                        canvasEl.height = videoEl.videoHeight;
+                        canvasEl.width = videoEl.videoWidth;
+                        canvasCtx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+                        const imgData = canvasCtx.getImageData(0, 0, canvasEl.width, canvasEl.height);
+                        const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "dontInvert" });
+
+                        if (code) {
+                            // OKUTULAN QR KODU KONTROL ET (GENCER_TEKNIK_PDKS_KARTI ŞARTI)
+                            const scannedText = code.data.trim();
+                            if (scannedText === 'GENCER_TEKNIK_PDKS_KARTI' || scannedText.includes('GENCER_TEKNIK_PDKS_KARTI')) {
+                                handleSuccessfulQRScan();
+                            } else {
+                                window.showToast('Geçersiz QR Kod! İşyeri QR kodu değil.');
+                            }
+                        }
+                    }
+                }, 400);
+
+            } catch (err) {
+                window.showToast('Kameraya erişilemedi!');
+                console.error(err);
+            }
+        }
+
+        window.stopCamera = () => {
+            if (qrScanInterval) clearInterval(qrScanInterval);
+            if (activeVideoStream) {
+                activeVideoStream.getTracks().forEach(track => track.stop());
+                activeVideoStream = null;
+            }
+            const videoEl = document.getElementById('qrCameraVideo');
+            if (videoEl) videoEl.srcObject = null;
+            const ph = document.getElementById('cameraPlaceholder');
+            if (ph) ph.style.display = 'flex';
+        }
+
+        function closePdksModal() { 
+            stopCamera(); 
+            document.getElementById('actionPanelSection').classList.add('hidden');
+            document.getElementById('qrScanSection').classList.remove('hidden');
+            closeModal('pdksModal'); 
+        }
+
+        function handleSuccessfulQRScan() {
+            stopCamera();
+            window.showToast('Resmi QR Kod Doğrulandı!', false);
+            document.getElementById('qrScanSection').classList.add('hidden');
+            document.getElementById('actionPanelSection').classList.remove('hidden');
+        }
+
+        function applyRoles() {
+            const isNormal = currentUserRole === 'Normal'; const isYetkili = currentUserRole === 'Yetkili';
+            const bBorc = document.getElementById('btn_borc'); const cBorc = document.getElementById('content_borc'); const lBorc = document.getElementById('lock_borc');
+            const bMesai = document.getElementById('btn_mesai'); const cMesai = document.getElementById('content_mesai'); const lMesai = document.getElementById('lock_mesai');
+            const bNotif = document.getElementById('btn_notif');
+
+            if(isNormal) { lBorc.classList.remove('hidden'); cBorc.classList.add('opacity-0'); bBorc.onclick = null; } 
+            else { lBorc.classList.add('hidden'); cBorc.classList.remove('opacity-0'); bBorc.onclick = () => openModal('borcModal'); }
+            
+            if(isNormal || isYetkili) { lMesai.classList.remove('hidden'); cMesai.classList.add('opacity-0'); bMesai.onclick = null; }
+            else { lMesai.classList.add('hidden'); cMesai.classList.remove('opacity-0'); bMesai.onclick = () => openModal('mesaiModal'); }
+
+            if(isNormal) bNotif.classList.add('hidden'); else bNotif.classList.remove('hidden');
+            document.getElementById('btn_sifre').onclick = () => { renderPassSelect(); openModal('passwordModal'); };
+        }
+
+        function renderLoginSelect() { const s=document.getElementById('loginUserSelect'); if(s) s.innerHTML = getCombStaff().filter(x=>x.status==='Aktif').map(x=>`<option value="${x.name}">${x.name}</option>`).join(''); }
+        window.handleLogin = () => {
+            const n = document.getElementById('loginUserSelect').value; const p = document.getElementById('loginPass').value;
+            const u = getCombStaff().find(x=>x.name === n);
+            let expected = u.pass || '1234'; if(u.name === 'HASAN GÜRBÜZ') expected = 'hasan998';
+            if(p === expected) {
+                currentUser = u.name; currentUserRole = u.role || 'Normal'; currentUserId = u.id;
+                document.getElementById('headerUserRole').innerText = currentUserRole;
+                applyRoles();
+                const ls = document.getElementById('loginScreen'); ls.classList.add('opacity-0','scale-110'); setTimeout(()=>ls.style.display='none', 700);
+            } else window.showToast('Şifre Hatalı!');
+        }
+
+        function renderPdksSelect() {
+            const lbl = document.getElementById('pdksActiveUserLabel'); 
+            if(lbl) lbl.innerText = currentUser || 'Bilinmiyor';
+        }
+        
+        window.recordPdks = (type) => {
+            const name = currentUser; if(!name) return;
+            const now = new Date(); const h = now.getHours(); const m = now.getMinutes(); const s = now.getSeconds();
+            const timeStr = now.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'}); const dateStr = now.toLocaleDateString('tr-TR');
+
+            if(type === 'Giriş' && (h > 8 || (h === 8 && m >= 10))) {
+                window.fbAddNotification({ msg: `${name} Giriş Saati: ${timeStr}`, date: dateStr, time: timeStr, read: false });
+            }
+            if(type === 'Çıkış' && h >= 18) {
+                let over = (h - 18) + (m / 60) + (s / 3600);
+                over = parseFloat(over.toFixed(2));
+                if(over > 0) {
+                    window.fbAddMesai({ person: name, hours: over, note: 'Otomatik QR Çıkış Mesaisi', date: dateStr, day: now.getDate(), month: now.getMonth(), year: now.getFullYear() });
+                    window.showToast(`${name} için ${over} saat otomatik mesai eklendi!`, false);
+                }
+            }
+            window.fbAddPdks({ name, type, time: timeStr, date: dateStr });
+            window.showToast(`${type} Başarılı (${name}): ${timeStr}`, false);
+
+            setTimeout(() => {
+                closePdksModal();
+            }, 800);
+        }
+
+        function renderBorcLists() {
+            const actC = document.getElementById('activeBorcList'); const resC = document.getElementById('resolvedBorcList');
+            if(!actC || !resC) return;
+            
+            const active = liveData.borc.filter(b => !b.resolved);
+            const resolved = liveData.borc.filter(b => b.resolved);
+
+            actC.innerHTML = active.length === 0 ? '<div class="text-xs text-slate-500 text-center p-2">Aktif borç yok.</div>' : active.map(item => `
+                <div class="bg-slate-900 p-3 rounded-xl border border-amber-500/40 flex justify-between items-center text-xs">
+                    <div>
+                        <span class="font-bold text-white">${item.firma}</span>
+                        <span class="text-amber-400 font-bold ml-1">(${item.malzeme} - ${item.adet} Adet)</span>
+                        <p class="text-[10px] text-slate-400 mt-0.5">${item.ack || ''}</p>
+                        <p class="text-[9px] text-slate-500 mt-1 flex items-center gap-1"><i class="fa-regular fa-calendar"></i> ${item.date || ''}</p>
+                    </div>
+                    <div class="flex gap-1">
+                        <button onclick="window.fbUpdateBorcStatus('${item.id}', true)" class="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded font-bold">Çöz</button>
+                        <button onclick="window.fbDeleteBorc('${item.id}')" class="p-1 text-slate-400 hover:text-rose-400"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('');
+
+            resC.innerHTML = resolved.length === 0 ? '<div class="text-xs text-slate-500 text-center p-2">Çözülen borç yok.</div>' : resolved.map(item => `
+                <div class="bg-slate-950 opacity-75 p-3 rounded-xl border border-emerald-500/30 flex justify-between items-center text-xs">
+                    <div>
+                        <span class="font-bold text-slate-300 line-through">${item.firma}</span>
+                        <span class="text-emerald-400 font-bold ml-1">(${item.malzeme} - ${item.adet} Adet)</span>
+                        <p class="text-[9px] text-slate-500 mt-1 flex items-center gap-1"><i class="fa-regular fa-calendar"></i> ${item.date || ''}</p>
+                    </div>
+                    <div class="flex gap-1">
+                        <button onclick="window.fbUpdateBorcStatus('${item.id}', false)" class="px-2 py-1 bg-amber-500/20 text-amber-400 rounded font-bold">Aktif Et</button>
+                        <button onclick="window.fbDeleteBorc('${item.id}')" class="p-1 text-slate-400 hover:text-rose-400"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        window.saveNewBorc = () => {
+            const date = document.getElementById('borcDateInput').value;
+            const firma = document.getElementById('borcFirma').value;
+            const malzeme = document.getElementById('borcMalzeme').value;
+            const adet = document.getElementById('borcAdet').value;
+            const ack = document.getElementById('borcAck').value;
+            if(!firma || !malzeme) { window.showToast('Firma ve Malzeme zorunludur!'); return; }
+            
+            let formattedDate = date ? date.split('-').reverse().join('.') : new Date().toLocaleDateString('tr-TR');
+            window.fbAddBorc({ firma, malzeme, adet: adet||'1', ack, date: formattedDate, resolved: false });
+            closeModal('addBorcModal');
+            document.getElementById('borcFirma').value=''; document.getElementById('borcMalzeme').value=''; document.getElementById('borcAdet').value=''; document.getElementById('borcAck').value='';
+        }
+
+        let pressTimer;
+        window.startPress = (id) => { pressTimer = setTimeout(() => { if(confirm('Bu mesai kaydını silmek istiyor musunuz?')) window.fbDeleteMesai(id); }, 800); }
+        window.cancelPress = () => { clearTimeout(pressTimer); }
+
+        function renderMesaiList(list) {
+            const c = document.getElementById('mesaiListContainer'); if(!c) return;
+            c.innerHTML = list.length === 0 ? '<div class="text-xs text-slate-500 text-center p-3">Kayıt bulunmuyor.</div>' : list.map(i => `
+                <div onpointerdown="startPress('${i.id}')" onpointerup="cancelPress()" onpointerleave="cancelPress()" class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex justify-between items-center text-xs select-none cursor-pointer">
+                    <div><p class="font-bold text-white">${i.person}</p><p class="text-[10px] text-slate-400">${i.note} - ${i.date}</p></div>
+                    <span class="text-[#F38E23] font-bold">+${i.hours} Saat</span>
+                </div>
+            `).join('');
+        }
+
+        function renderManualChecklist() {
+            const c = document.getElementById('manualStaffChecklist'); if(!c) return;
+            const staff = getCombStaff().filter(x=>x.status==='Aktif');
+            c.innerHTML = staff.map(x=> `
+                <div class="flex justify-between items-center bg-slate-950 p-2 rounded border border-slate-800">
+                    <label class="text-xs text-white flex items-center gap-2"><input type="checkbox" id="m_chk_${x.id}" checked> ${x.name}</label>
+                    <input type="number" step="0.5" id="m_hr_${x.id}" value="8" class="w-14 bg-slate-900 border border-slate-700 text-xs text-white rounded p-1 text-center">
+                </div>
+            `).join('');
+        }
+
+        window.saveManualMesai = () => {
+            const rawDate = document.getElementById('manualMesaiDate').value;
+            const note = document.getElementById('manualMesaiNote').value || 'Manuel Mesai';
+            if(!rawDate) { window.showToast('Lütfen tarih seçin!'); return; }
+            const dateObj = new Date(rawDate);
+            const day = dateObj.getDate(); const month = dateObj.getMonth(); const year = dateObj.getFullYear();
+            const dateStr = rawDate.split('-').reverse().join('.');
+
+            getCombStaff().filter(x=>x.status==='Aktif').forEach(x => {
+                const chk = document.getElementById(`m_chk_${x.id}`);
+                if(chk && chk.checked) {
+                    const hrs = parseFloat(document.getElementById(`m_hr_${x.id}`).value || 0);
+                    if(hrs > 0) {
+                        window.fbAddMesai({ person: x.name, hours: hrs, note, date: dateStr, day, month, year });
+                    }
+                }
+            });
+            window.showToast('Mesailer eklendi!', false);
+            closeModal('addMesaiModal');
+        }
+
+        function renderNotifs() {
+            const c = document.getElementById('notifListContainer'); const b = document.getElementById('notifBadge');
+            if(!c || !b) return;
+            const unread = liveData.notifs.length; if(unread > 0) b.classList.remove('hidden'); else b.classList.add('hidden');
+            let sorted = [...liveData.notifs].sort((a,b)=> (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+            c.innerHTML = sorted.map(n => `
+                <div class="bg-rose-950/30 p-3 rounded-xl border border-rose-500/30 flex justify-between items-center text-xs">
+                    <div><span class="font-bold text-rose-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${n.msg}</span><p class="text-[9px] text-slate-400">${n.date} - ${n.time}</p></div>
+                    <button onclick="window.fbDeleteNotif('${n.id}')" class="p-2 text-rose-500 hover:text-rose-300"><i class="fa-solid fa-check text-sm"></i></button>
+                </div>
+            `).join('');
+        }
+
+        function renderPassSelect() {
+            const s = document.getElementById('passUserSelect'); if(!s) return;
+            const staff = getCombStaff().filter(x=>x.status==='Aktif');
+            if(currentUserRole === 'Normal') { s.innerHTML = `<option value="${currentUserId}">${currentUser}</option>`; s.disabled = true; }
+            else { s.innerHTML = staff.map(x=>`<option value="${x.id}">${x.name}</option>`).join(''); s.disabled = false; }
+        }
+        window.updatePassword = () => {
+            const id = document.getElementById('passUserSelect').value; const pass = document.getElementById('newPassInput').value;
+            if(!pass || pass.length < 3) { window.showToast('Şifre en az 3 hane olmalı!'); return; }
+            if(id.startsWith('def') || id.startsWith('admin')) { window.showToast('Gömülü hesap şifresi webden değişmez!'); return; }
+            window.fbUpdatePassword(id, pass); document.getElementById('newPassInput').value = '';
+        }
+
+        window.switchTab = (t) => { 
+            const p = document.getElementById('profileTab');
+            if(t === 'profile') { if(currentUserRole !== 'Admin') { window.showToast('Sadece Admin Girebilir!'); return; } p.classList.remove('hidden'); }
+            else p.classList.add('hidden');
+        }
+        function renderProfileStaffList() {
+            const c = document.getElementById('profileStaffList'); if(!c) return;
+            c.innerHTML = getCombStaff().map(s => `
+                <div class="bg-slate-950 p-3 rounded-lg text-xs text-white border border-slate-800 flex justify-between items-center">
+                    <div>
+                        <span class="font-bold text-[13px] text-amber-400">${s.name}</span>
+                        <select onchange="window.fbUpdateStaffRole('${s.id}', '${s.name}', this.value)" class="ml-2 bg-slate-900 border border-slate-700 rounded text-[9px] p-0.5 outline-none">
+                            <option value="Normal" ${(s.role||'Normal')==='Normal'?'selected':''}>Normal</option>
+                            <option value="Yetkili" ${(s.role||'Normal')==='Yetkili'?'selected':''}>Yetkili</option>
+                            <option value="Admin" ${(s.role||'Normal')==='Admin'?'selected':''}>Admin</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="window.fbUpdateStaffStatus('${s.id}','${s.name}','Aktif')" class="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded">Aktif</button>
+                        <button onclick="window.fbUpdateStaffStatus('${s.id}','${s.name}','Pasif')" class="px-2 py-1 bg-rose-500/20 text-rose-400 rounded">Pasif</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        window.addNewCustomStaff = () => { const i = document.getElementById('newStaffName'); if(i.value) { window.fbAddStaff(i.value); i.value=''; } }
+
+        const mNames = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
+        let selectedMonthIndex = 10; let selectedDay = 3; let currentYear = 2026;
+        
+        function renderMonthsGrid() { 
+            document.getElementById('monthsGrid').innerHTML = mNames.map((n,i)=>`
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between items-center">
+                    <span class="text-xs font-bold text-slate-200 mb-2">${n}</span>
+                    <div class="flex gap-1 w-full">
+                        <button onclick="selectMonth(${i})" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded text-[10px] font-bold">Takvim</button>
+                        <button onclick="openMonthlyReport(${i})" class="flex-1 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded text-[10px] font-black">Rapor</button>
+                    </div>
+                </div>
+            `).join(''); 
+        }
+
+        window.showMonthsView = () => { 
+            document.getElementById('viewDays').classList.add('hidden'); 
+            document.getElementById('viewReport').classList.add('hidden'); 
+            document.getElementById('viewMonths').classList.remove('hidden'); 
+            renderMonthsGrid(); 
+        }
+
+        window.selectMonth = (i) => { 
+            selectedMonthIndex=i; 
+            document.getElementById('viewMonths').classList.add('hidden'); 
+            document.getElementById('viewReport').classList.add('hidden');
+            document.getElementById('viewDays').classList.remove('hidden'); 
+            document.getElementById('selectedMonthLabel').innerText = `${mNames[i]} ${currentYear}`; 
+            renderDaysGrid(); 
+            selectDay(1); 
+        }
+
+        window.openMonthlyReport = (i) => {
+            selectedMonthIndex = i;
+            document.getElementById('viewMonths').classList.add('hidden');
+            document.getElementById('viewDays').classList.add('hidden');
+            document.getElementById('viewReport').classList.remove('hidden');
+            document.getElementById('selectedReportMonthLabel').innerText = `${mNames[i]} ${currentYear} - Aylık Özet Rapor`;
+            
+            const staffList = getCombStaff();
+            const monthRecords = liveData.mesai.filter(m => m.month === i);
+            let totals = {};
+            staffList.forEach(s => totals[s.name] = 0);
+            monthRecords.forEach(m => {
+                if(totals[m.person] !== undefined) totals[m.person] += parseFloat(m.hours || 0);
+                else totals[m.person] = parseFloat(m.hours || 0);
+            });
+
+            const repContainer = document.getElementById('monthlyReportList');
+            repContainer.innerHTML = Object.entries(totals).map(([name, hrs]) => `
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
+                    <span class="font-bold text-white">${name}</span>
+                    <span class="text-amber-400 font-black text-sm">${hrs} Saat</span>
+                </div>
+            `).join('');
+        }
+
+        function renderDaysGrid() { let h=''; for(let d=1; d<=31; d++) h+=`<button onclick="selectDay(${d})" class="py-1.5 rounded text-xs font-bold ${d===selectedDay?'bg-[#F38E23] text-slate-950':'bg-slate-950 text-slate-300 border border-slate-800'}">${d}</button>`; document.getElementById('daysGrid').innerHTML=h; }
+        window.selectDay = (d) => { selectedDay=d; renderDaysGrid(); renderMesaiList(liveData.mesai.filter(m=>m.month===selectedMonthIndex && m.day===d)); }
+        
+        function renderPdksLogs() { document.getElementById('pdksLogContainer').innerHTML = [...liveData.pdks].reverse().map(i=>`<div class="bg-slate-950 p-2 rounded-xl border border-slate-800 flex justify-between text-xs text-white"><span>${i.name} (${i.time})</span><span class="${i.type==='Giriş'?'text-emerald-400':'text-rose-400'}">${i.type}</span></div>`).join(''); }
+
+        window.openModal = (id) => { 
+            const m = document.getElementById(id); if(m) m.classList.remove('hidden'); 
+            if(id==='mesaiModal') showMonthsView(); 
+            if(id==='pdksModal') { 
+                renderPdksSelect();
+                document.getElementById('actionPanelSection').classList.add('hidden');
+                document.getElementById('qrScanSection').classList.remove('hidden');
+            }
+            if(id==='addBorcModal') { document.getElementById('borcDateInput').value = new Date().toISOString().split('T')[0]; }
+            if(id==='addMesaiModal') { document.getElementById('manualMesaiDate').value = new Date().toISOString().split('T')[0]; renderManualChecklist(); }
+        }
+        window.closeModal = (id) => { const m = document.getElementById('addBorcModal'); if(id==='addBorcModal') m.classList.add('hidden'); const modal = document.getElementById(id); if(modal) modal.classList.add('hidden'); }
+    </script>
+</body>
+</html>
